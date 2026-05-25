@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phone-trackpad"
+version = "0.1.0"
+description = "Use an iPhone browser as a Windows trackpad over a local network."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "websockets>=14.0",
+  "pyautogui>=0.9.54",
+  "qrcode[pil]>=7.0",
+  "Pillow>=9.0",
+  "pyperclip>=1.8.0",
+]
+
+[project.scripts]
+phone-trackpad = "phone_trackpad.__main__:main"
+
+[tool.setuptools.package-data]
+phone_trackpad = ["static/index.html"]

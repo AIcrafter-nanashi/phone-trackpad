@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Phone Trackpad</title>
+  <style>
+    :root {
+      --background: #1a1a2e;
+      --panel: #16213e;
+      --panel-light: #0f3460;
+      --accent: #e94560;
+      --text: #f5f5f6;
+      --muted: #a8afc7;
+      --connected: #32d583;
+      --disconnected: #e94560;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--background);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      overscroll-behavior: none;
+    }
+    body {
+      padding: env(safe-area-inset-top) env(safe-area-inset-right)
+        env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+    button, input, textarea { font: inherit; color: inherit; }
+    button {
+      border: 0;
+      border-radius: 14px;
+      background: var(--panel-light);
+      padding: 14px 18px;
+      min-height: 52px;
+    }
+    button:active { transform: scale(0.98); background: var(--accent); }
+    .screen { min-height: 100%; padding: 18px; }
+    .hidden { display: none !important; }
+    #loginScreen {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      text-align: center;
+    }
+    .brand { margin: 0; font-size: 30px; }
+    .subtitle, #authMessage { color: var(--muted); margin: 0; }
+    #pinForm { display: flex; flex-direction: column; gap: 14px; width: min(300px, 100%); }
+    #pinInput, #textInput {
+      border: 1px solid #334365;
+      border-radius: 14px;
+      background: var(--panel);
+      padding: 14px;
+      outline: none;
+    }
+    #pinInput {
+      font-size: 28px;
+      text-align: center;
+      letter-spacing: 10px;
+    }
+    .primary { background: var(--accent); font-weight: 650; }
+    #trackpadScreen {
+      height: 100vh;
+      min-height: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr auto auto;
+      gap: 14px;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    #statusDot {
+      display: inline-block;
+      height: 10px;
+      width: 10px;
+      border-radius: 50%;
+      background: var(--disconnected);
+    }
+    #statusDot.online { background: var(--connected); }
+    #keyboardToggle { min-width: 54px; padding: 10px; }
+    #pad {
+      min-height: 220px;
+      border-radius: 20px;
+      background: var(--panel);
+      border: 1px solid #233354;
+      position: relative;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #pad::after {
+      content: "Move with one finger  •  Scroll with two";
+      position: absolute;
+      inset: auto 0 20px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      pointer-events: none;
+    }
+    .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .buttons button { background: var(--panel-light); font-weight: 550; }
+    #keyboardPanel {
+      border-radius: 16px;
+      background: var(--panel);
+      padding: 12px;
+      display: flex;
+      gap: 10px;
+    }
+    #textInput {
+      flex: 1;
+      resize: none;
+      min-height: 52px;
+      max-height: 108px;
+    }
+    #sendText { background: var(--accent); min-width: 72px; }
+  </style>
+</head>
+<body>
+  <main id="loginScreen" class="screen">
+    <h1 class="brand">Phone Trackpad</h1>
+    <p class="subtitle">Enter the PIN shown on your PC.</p>
+    <form id="pinForm" autocomplete="off">
+      <input id="pinInput" inputmode="numeric" pattern="[0-9]*" maxlength="8"
+        placeholder="PIN" aria-label="PIN" required>
+      <button class="primary" type="submit">Connect</button>
+    </form>
+    <p id="authMessage">Connecting to your PC...</p>
+  </main>
+
+  <main id="trackpadScreen" class="screen hidden">
+    <header>
+      <div>
+        <h1 class="brand" style="font-size: 21px;">Phone Trackpad</h1>
+        <div class="status"><span id="statusDot"></span><span id="statusText">Disconnected</span></div>
+      </div>
+      <button id="keyboardToggle" type="button" aria-label="Toggle keyboard">Keyboard</button>
+    </header>
+    <section id="pad" aria-label="Trackpad"></section>
+    <section class="buttons" aria-label="Mouse buttons">
+      <button id="leftClick" type="button">Left Click</button>
+      <button id="rightClick" type="button">Right Click</button>
+    </section>
+    <section id="keyboardPanel" class="hidden">
+      <textarea id="textInput" placeholder="Type text to paste on your PC"></textarea>
+      <button id="sendText" type="button">Send</button>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const loginScreen = document.getElementById("loginScreen");
+      const trackpadScreen = document.getElementById("trackpadScreen");
+      const authMessage = document.getElementById("authMessage");
+      const pinForm = document.getElementById("pinForm");
+      const pinInput = document.getElementById("pinInput");
+      const statusDot = document.getElementById("statusDot");
+      const statusText = document.getElementById("statusText");
+      const pad = document.getElementById("pad");
+      const keyboardPanel = document.getElementById("keyboardPanel");
+      const textInput = document.getElementById("textInput");
+
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const port = window.location.port ? `:${window.location.port}` : "";
+      const socketUrl = `${protocol}//${window.location.hostname}${port}/`;
+      const maxReconnectAttempts = 5;
+      let socket;
+      let token = sessionStorage.getItem("phoneTrackpadToken") || "";
+      let storedPin = sessionStorage.getItem("phoneTrackpadPin") || "";
+      let reconnectAttempts = 0;
+      let reconnectTimer;
+      let authenticated = false;
+      let authPending = false;
+
+      function setStatus(online, label) {
+        statusDot.classList.toggle("online", online);
+        statusText.textContent = label;
+      }
+
+      function showLogin(message) {
+        loginScreen.classList.remove("hidden");
+        trackpadScreen.classList.add("hidden");
+        if (message) authMessage.textContent = message;
+      }
+
+      function showTrackpad() {
+        loginScreen.classList.add("hidden");
+        trackpadScreen.classList.remove("hidden");
+      }
+
+      function send(message) {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify(message));
+          return true;
+        }
+        return false;
+      }
+
+      function sendOperation(type, data = {}) {
+        if (authenticated && token) send({ type, ...data, token });
+      }
+
+      function connect() {
+        clearTimeout(reconnectTimer);
+        setStatus(false, "Connecting...");
+        socket = new WebSocket(socketUrl);
+        socket.addEventListener("open", () => {
+          authMessage.textContent = "Enter the PIN shown on your PC.";
+          if (storedPin && (token || authPending)) {
+            send({ type: "auth", pin: storedPin });
+          }
+        });
+        socket.addEventListener("message", ({ data }) => {
+          let message;
+          try { message = JSON.parse(data); } catch (_) { return; }
+          if (message.type === "auth_result") {
+            if (message.success) {
+              token = message.token;
+              authenticated = true;
+              authPending = false;
+              reconnectAttempts = 0;
+              sessionStorage.setItem("phoneTrackpadToken", token);
+              setStatus(true, "Connected");
+              showTrackpad();
+            } else {
+              token = "";
+              authenticated = false;
+              authPending = false;
+              sessionStorage.removeItem("phoneTrackpadToken");
+              showLogin(message.message || "Authentication failed.");
+            }
+          } else if (message.type === "status") {
+            setStatus(true, `Connected (${message.client_count})`);
+          } else if (message.type === "error") {
+            if (message.reauth) {
+              token = "";
+              authenticated = false;
+              authPending = false;
+              sessionStorage.removeItem("phoneTrackpadToken");
+              showLogin("Session expired. Enter the PIN again.");
+            }
+          }
+        });
+        socket.addEventListener("close", () => {
+          authenticated = false;
+          setStatus(false, "Disconnected");
+          if (reconnectAttempts < maxReconnectAttempts) {
+            reconnectAttempts += 1;
+            statusText.textContent = `Reconnecting (${reconnectAttempts}/${maxReconnectAttempts})`;
+            reconnectTimer = setTimeout(connect, 3000);
+          } else {
+            showLogin("Connection lost. Reload to try again.");
+          }
+        });
+        socket.addEventListener("error", () => setStatus(false, "Connection error"));
+      }
+
+      pinForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const pin = pinInput.value.trim();
+        if (!pin) return;
+        storedPin = pin;
+        authPending = true;
+        sessionStorage.setItem("phoneTrackpadPin", pin);
+        if (!socket || socket.readyState === WebSocket.CLOSED) connect();
+        if (!send({ type: "auth", pin })) authMessage.textContent = "Waiting for connection...";
+      });
+
+      document.getElementById("keyboardToggle").addEventListener("click", () => {
+        keyboardPanel.classList.toggle("hidden");
+        if (!keyboardPanel.classList.contains("hidden")) textInput.focus();
+      });
+      document.getElementById("leftClick").addEventListener("click", () => sendOperation("left_click"));
+      document.getElementById("rightClick").addEventListener("click", () => sendOperation("right_click"));
+      document.getElementById("sendText").addEventListener("click", () => {
+        if (textInput.value) {
+          sendOperation("type", { text: textInput.value });
+          textInput.value = "";
+        }
+      });
+
+      let touchMode = 0;
+      let lastX = 0;
+      let lastY = 0;
+      let startAt = 0;
+      let movement = 0;
+      let pendingX = 0;
+      let pendingY = 0;
+      let pendingScroll = 0;
+      let animationFrame = 0;
+
+      function centerOfTouches(touches) {
+        let x = 0;
+        let y = 0;
+        for (const touch of touches) {
+          x += touch.clientX;
+          y += touch.clientY;
+        }
+        return { x: x / touches.length, y: y / touches.length };
+      }
+
+      function flushMovement() {
+        animationFrame = 0;
+        if (pendingX || pendingY) {
+          sendOperation("move", { dx: pendingX, dy: pendingY });
+          pendingX = 0;
+          pendingY = 0;
+        }
+        if (pendingScroll) {
+          sendOperation("scroll", { dx: 0, dy: pendingScroll });
+          pendingScroll = 0;
+        }
+      }
+
+      function scheduleFlush() {
+        if (!animationFrame) animationFrame = requestAnimationFrame(flushMovement);
+      }
+
+      pad.addEventListener("touchstart", (event) => {
+        event.preventDefault();
+        touchMode = event.touches.length >= 2 ? 2 : 1;
+        const point = centerOfTouches(Array.from(event.touches).slice(0, touchMode));
+        lastX = point.x;
+        lastY = point.y;
+        startAt = performance.now();
+        movement = 0;
+      }, { passive: false });
+
+      pad.addEventListener("touchmove", (event) => {
+        event.preventDefault();
+        const count = event.touches.length >= 2 ? 2 : 1;
+        const point = centerOfTouches(Array.from(event.touches).slice(0, count));
+        if (count !== touchMode) {
+          touchMode = count;
+          lastX = point.x;
+          lastY = point.y;
+          movement = 10;
+          return;
+        }
+        const dx = point.x - lastX;
+        const dy = point.y - lastY;
+        movement += Math.hypot(dx, dy);
+        lastX = point.x;
+        lastY = point.y;
+        if (touchMode === 1) {
+          pendingX += dx;
+          pendingY += dy;
+        } else {
+          pendingScroll += -dy / 10;
+        }
+        scheduleFlush();
+      }, { passive: false });
+
+      pad.addEventListener("touchend", (event) => {
+        event.preventDefault();
+        if (event.touches.length) return;
+        if (movement < 10 && performance.now() - startAt < 250) {
+          sendOperation(touchMode === 2 ? "right_click" : "left_click");
+        }
+        touchMode = 0;
+      }, { passive: false });
+
+      connect();
+      setInterval(() => sendOperation("ping"), 20000);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+websockets>=14.0
+pyautogui>=0.9.54
+qrcode[pil]>=7.0
+Pillow>=9.0
+pyperclip>=1.8.0
