@@ -57,3 +57,10 @@ class MouseController:
             return
         self._clipboard.copy(text)
         self._gui.hotkey("ctrl", "v")
+
+    _ALLOWED_KEYS = {"enter", "tab", "escape", "backspace", "space",
+                     "up", "down", "left", "right", "delete"}
+
+    def key_press(self, key: str) -> None:
+        if key in self._ALLOWED_KEYS:
+            self._gui.press(key)

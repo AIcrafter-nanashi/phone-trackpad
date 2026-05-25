@@ -168,6 +168,14 @@ class TrackpadServer:
                 if not isinstance(text, str) or len(text) > 10000:
                     raise ValueError("Invalid text")
                 self.mouse_controller.type_text(text)
+            elif operation == "key_press":
+                key = message.get("key")
+                if not isinstance(key, str):
+                    raise ValueError("Invalid key")
+                self.mouse_controller.key_press(key)
+            elif operation == "set_sensitivity":
+                value = self._number(message.get("value"), limit=10.0)
+                self.mouse_controller.sensitivity = max(0.1, value)
             elif operation == "ping":
                 await self._send(websocket, {"type": "pong"})
             else:
