@@ -68,7 +68,7 @@
       height: 100vh;
       min-height: 100%;
       display: grid;
-      grid-template-rows: auto 1fr auto auto auto auto;
+      grid-template-rows: auto auto auto 1fr auto auto auto auto auto;
       gap: 14px;
     }
     header {
@@ -92,7 +92,26 @@
       background: var(--disconnected);
     }
     #statusDot.online { background: var(--connected); }
-    #keyboardToggle { min-width: 54px; padding: 10px; }
+    #keyboardToggle, #screenToggle { min-width: 54px; padding: 10px; }
+    #screenSection { display: contents; }
+    #screenView {
+      border-radius: 14px;
+      background: #000;
+      overflow: hidden;
+      max-height: 40vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #screenImg { width: 100%; height: 100%; object-fit: contain; display: block; }
+    #screenQuality {
+      display: flex; gap: 8px;
+    }
+    #screenQuality button {
+      flex: 1; font-size: 13px; padding: 8px 4px; min-height: 38px;
+      background: var(--panel-light);
+    }
+    #screenQuality button.active { background: var(--accent); }
     #pad {
       min-height: 220px;
       border-radius: 20px;
@@ -115,8 +134,10 @@
     }
     .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .buttons button { background: var(--panel-light); font-weight: 550; }
-    .keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .keys { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
     .keys button { background: var(--panel); font-size: 13px; padding: 12px 6px; min-height: 46px; }
+    .media-keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .media-keys button { background: var(--panel); font-size: 13px; padding: 12px 6px; min-height: 46px; }
     .sensitivity-row {
       display: flex; align-items: center; gap: 10px;
       background: var(--panel); border-radius: 14px; padding: 10px 14px;
@@ -158,18 +179,40 @@
         <h1 class="brand" style="font-size: 21px;">Phone Trackpad</h1>
         <div class="status"><span id="statusDot"></span><span id="statusText">Disconnected</span></div>
       </div>
-      <button id="keyboardToggle" type="button" aria-label="Toggle keyboard">Keyboard</button>
+      <div style="display:flex;gap:8px;">
+        <button id="screenToggle" type="button" aria-label="Toggle screen">Screen</button>
+        <button id="keyboardToggle" type="button" aria-label="Toggle keyboard">Keyboard</button>
+      </div>
     </header>
+    <section id="screenView" class="hidden" aria-label="PC Screen">
+      <img id="screenImg" alt="PC Screen">
+    </section>
+    <div id="screenQuality" class="hidden">
+      <button data-scale="0.3" data-quality="20" data-fps="10" type="button">Low</button>
+      <button data-scale="0.5" data-quality="45" data-fps="20" type="button" class="active">Mid</button>
+      <button data-scale="0.7" data-quality="65" data-fps="30" type="button">High</button>
+    </div>
     <section id="pad" aria-label="Trackpad"></section>
     <section class="buttons" aria-label="Mouse buttons">
       <button id="leftClick" type="button">Left Click</button>
       <button id="rightClick" type="button">Right Click</button>
     </section>
     <section class="keys" aria-label="Keyboard shortcuts">
+      <button data-key="win" type="button">⊞</button>
       <button data-key="enter" type="button">Enter</button>
       <button data-key="tab" type="button">Tab</button>
       <button data-key="escape" type="button">Esc</button>
       <button data-key="backspace" type="button">⌫</button>
+    </section>
+    <section class="media-keys" aria-label="Media and clipboard">
+      <button data-key="ctrl+c" type="button">Copy</button>
+      <button data-key="ctrl+v" type="button">Paste</button>
+      <button data-key="volumemute" type="button">🔇</button>
+      <button data-key="volumedown" type="button">🔉</button>
+      <button data-key="volumeup" type="button">🔊</button>
+      <button data-key="prevtrack" type="button">⏮</button>
+      <button data-key="playpause" type="button">⏯</button>
+      <button data-key="nexttrack" type="button">⏭</button>
     </section>
     <div class="sensitivity-row">
       <label for="sensitivitySlider">Speed</label>
@@ -194,6 +237,12 @@
       const pad = document.getElementById("pad");
       const keyboardPanel = document.getElementById("keyboardPanel");
       const textInput = document.getElementById("textInput");
+      const screenView = document.getElementById("screenView");
+      const screenImg = document.getElementById("screenImg");
+      let streamingActive = false;
+      let streamScale = 0.5;
+      let streamQuality = 45;
+      let streamFps = 20;
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const port = window.location.port ? `:${window.location.port}` : "";
@@ -246,6 +295,16 @@
           }
         });
         socket.addEventListener("message", ({ data }) => {
+          if (data instanceof Blob) {
+            if (streamingActive) {
+              const imgBlob = new Blob([data], { type: "image/jpeg" });
+              const url = URL.createObjectURL(imgBlob);
+              const old = screenImg.src;
+              screenImg.src = url;
+              if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+            }
+            return;
+          }
           let message;
           try { message = JSON.parse(data); } catch (_) { return; }
           if (message.type === "auth_result") {
@@ -301,13 +360,42 @@
         if (!send({ type: "auth", pin })) authMessage.textContent = "Waiting for connection...";
       });
 
+      const screenQualityRow = document.getElementById("screenQuality");
+      document.getElementById("screenToggle").addEventListener("click", () => {
+        streamingActive = !streamingActive;
+        const btn = document.getElementById("screenToggle");
+        if (streamingActive) {
+          screenView.classList.remove("hidden");
+          screenQualityRow.classList.remove("hidden");
+          btn.textContent = "Screen ●";
+          sendOperation("start_stream", { fps: streamFps, scale: streamScale, quality: streamQuality });
+        } else {
+          screenView.classList.add("hidden");
+          screenQualityRow.classList.add("hidden");
+          btn.textContent = "Screen";
+          sendOperation("stop_stream");
+          screenImg.src = "";
+        }
+      });
+      screenQualityRow.querySelectorAll("button").forEach(btn => {
+        btn.addEventListener("click", () => {
+          screenQualityRow.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          streamScale = parseFloat(btn.dataset.scale);
+          streamQuality = parseInt(btn.dataset.quality);
+          streamFps = parseInt(btn.dataset.fps || "20");
+          if (streamingActive) {
+            sendOperation("start_stream", { fps: streamFps, scale: streamScale, quality: streamQuality });
+          }
+        });
+      });
       document.getElementById("keyboardToggle").addEventListener("click", () => {
         keyboardPanel.classList.toggle("hidden");
         if (!keyboardPanel.classList.contains("hidden")) textInput.focus();
       });
       document.getElementById("leftClick").addEventListener("click", () => sendOperation("left_click"));
       document.getElementById("rightClick").addEventListener("click", () => sendOperation("right_click"));
-      document.querySelectorAll(".keys button[data-key]").forEach(btn => {
+      document.querySelectorAll(".keys button[data-key], .media-keys button[data-key]").forEach(btn => {
         btn.addEventListener("click", () => sendOperation("key_press", { key: btn.dataset.key }));
       });
 

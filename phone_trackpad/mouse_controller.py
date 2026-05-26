@@ -59,8 +59,13 @@ class MouseController:
         self._gui.hotkey("ctrl", "v")
 
     _ALLOWED_KEYS = {"enter", "tab", "escape", "backspace", "space",
-                     "up", "down", "left", "right", "delete"}
+                     "up", "down", "left", "right", "delete", "win",
+                     "volumeup", "volumedown", "volumemute",
+                     "playpause", "nexttrack", "prevtrack"}
+    _COMBO_KEYS = {"ctrl+c", "ctrl+v"}
 
     def key_press(self, key: str) -> None:
         if key in self._ALLOWED_KEYS:
             self._gui.press(key)
+        elif key in self._COMBO_KEYS:
+            self._gui.hotkey(*key.split("+"))

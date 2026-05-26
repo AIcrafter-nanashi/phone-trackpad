@@ -12,17 +12,20 @@ from urllib.parse import urlsplit
 import websockets
 from websockets.exceptions import ConnectionClosed
 
+from phone_trackpad.screen_streamer import ScreenStreamer
+
 
 class TrackpadServer:
     ALLOWED_NETWORKS = tuple(
         ipaddress.ip_network(network)
-        for network in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+        for network in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10")
     )
 
     def __init__(self, config: Any, auth_manager: Any, mouse_controller: Any) -> None:
         self.config = config
         self.auth_manager = auth_manager
         self.mouse_controller = mouse_controller
+        self.screen_streamer = ScreenStreamer()
         self.sessions: dict[Any, str] = {}
         self.index_path = Path(__file__).with_name("static") / "index.html"
 
@@ -94,6 +97,7 @@ class TrackpadServer:
         except ConnectionClosed:
             pass
         finally:
+            self.screen_streamer.unsubscribe(websocket)
             token = self.sessions.pop(websocket, None)
             if token is not None:
                 self.auth_manager.revoke_token(token)
@@ -176,6 +180,28 @@ class TrackpadServer:
             elif operation == "set_sensitivity":
                 value = self._number(message.get("value"), limit=10.0)
                 self.mouse_controller.sensitivity = max(0.1, value)
+            elif operation == "start_stream":
+                if self.screen_streamer.available:
+                    fps = self._number(message.get("fps", 5), limit=60.0)
+                    scale = self._number(message.get("scale", 0.35), limit=1.0)
+                    quality = int(self._number(message.get("quality", 25), limit=80.0))
+                    self.screen_streamer.fps = max(1.0, fps)
+                    self.screen_streamer.scale = max(0.1, scale)
+                    self.screen_streamer.quality = max(10, quality)
+                    self.screen_streamer.subscribe(websocket)
+                    print(
+                        f"[Screen] Streaming started — {self._client_ip(websocket)} "
+                        f"(fps={self.screen_streamer.fps:.0f} scale={self.screen_streamer.scale} "
+                        f"quality={self.screen_streamer.quality})"
+                    )
+                else:
+                    await self._send(websocket, {
+                        "type": "error",
+                        "message": "Screen capture unavailable. Run: pip install mss",
+                    })
+            elif operation == "stop_stream":
+                self.screen_streamer.unsubscribe(websocket)
+                print(f"[Screen] Streaming stopped — {self._client_ip(websocket)}")
             elif operation == "ping":
                 await self._send(websocket, {"type": "pong"})
             else:
